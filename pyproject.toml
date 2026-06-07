@@ -1,0 +1,130 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "poutyne"
+version = "1.19.0"
+description = "A simplified framework and utilities for PyTorch."
+readme = "README.md"
+license = { text = "LGPL-3.0-or-later" }
+authors = [{ name = "Frédérik Paradis", email = "fredy_14@live.fr" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Education",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Software Development :: Libraries",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "lightning_utilities",
+    "numpy",
+    "torch",
+    "torchmetrics",
+]
+
+[project.optional-dependencies]
+colorama     = ["colorama>=0.4.3"]
+scikit-learn = ["scikit-learn>=0.23.2"]
+tensorboard  = ["tensorboard>=2.4.0"]
+tensorboardX = ["tensorboardX>=2.1"]
+torchvision  = ["torchvision>=0.8.1"]
+pandas       = ["pandas>=2.0.0"]
+mlflow       = ["mlflow>=1.12.1"]
+extras = [
+    "poutyne[colorama]",
+    "poutyne[scikit-learn]",
+    "poutyne[tensorboard]",
+    "poutyne[tensorboardX]",
+    "poutyne[torchvision]",
+    "poutyne[pandas]",
+    "poutyne[mlflow]",
+]
+
+[project.urls]
+Homepage      = "https://poutyne.org"
+Repository    = "https://github.com/freud14/poutyne"
+"Bug Tracker" = "https://github.com/freud14/poutyne/issues"
+Changelog     = "https://github.com/freud14/poutyne/blob/master/CHANGELOG.md"
+
+[dependency-groups]
+dev = [
+    { include-group = "lint" },
+    { include-group = "test" },
+    { include-group = "docs" },
+    { include-group = "examples" },
+]
+lint = [
+    "ruff==0.15.16",
+]
+test = [
+    "pytest",
+    "pytest-cov",
+    "scikit-learn",
+    "tensorboard",
+    "tensorboardX",
+    "colorama",
+    "torchvision",
+    "pandas",
+    "mlflow",
+    "omegaconf",
+    "matplotlib",
+    "pillow",
+    "wandb",
+]
+docs = [
+    "sphinx",
+    "sphinx_rtd_theme",
+]
+examples = [
+    "colorama",
+    "fasttext~=0.9.2; sys_platform != 'win32'",
+    "requests",
+    "torchvision",
+    "torchmetrics",
+]
+
+[tool.ruff]
+line-length = 120
+exclude = ["slides"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "PL", "UP", "RUF", "B", "PT", "C4", "SIM", "NPY", "PERF", "T20"]
+ignore = [
+    "E731",    # lambda-assignment
+    "PLR0402", # import-alias (consider-using-from-import)
+    "PLR0913", # too-many-arguments
+    "PLR2004", # magic-value-comparison
+    "B905",    # zip without strict= (too noisy for PyTorch tensor code)
+    "PT011",   # pytest.raises too broad (adding match= is out of scope for this codebase)
+    "PT030",   # pytest.warns too broad (adding match= is out of scope for this codebase)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401", "F403"]
+"examples/**" = ["PLW2901", "T20", "NPY002"]  # x = x.to(device) is intentional; print and legacy numpy expected in examples
+"tutorials/**" = ["T20", "NPY002"]
+"tests/**" = ["NPY002", "E721"]  # E721: tests use exact type checks (type() ==) intentionally; NPY002: legacy numpy random API ok in fixtures
+"poutyne/utils.py" = ["NPY002"]  # np.random.seed/get_state/set_state have no Generator equivalent
+
+[tool.ruff.format]
+quote-style = "preserve"
+
+[tool.pytest.ini_options]
+addopts = "--cov --cov-report html --cov-report xml"
+testpaths = ["tests"]
+python_classes = ["*Test"]
+filterwarnings = [
+    "ignore:Metric `SpearmanCorrcoef` will save all targets:UserWarning:torchmetrics",
+]

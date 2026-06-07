@@ -1,5 +1,4 @@
-images.tgz
-CUB200
-mnist
-*.tsv
-*.ckpt
+datasets
+saves
+cc.fr.300.bin
+cc.fr.300.bin.gz

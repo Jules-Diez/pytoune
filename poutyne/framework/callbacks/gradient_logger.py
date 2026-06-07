@@ -1,0 +1,207 @@
+"""
+Copyright (c) 2022 Poutyne and all respective contributors.
+
+Each contributor holds copyright over their respective contributions. The project versioning (Git)
+records all such contribution source information.
+
+This file is part of Poutyne.
+
+Poutyne is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+Poutyne is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with Poutyne. If not, see
+<https://www.gnu.org/licenses/>.
+"""
+
+import contextlib
+import csv
+import os
+from typing import TextIO
+
+import torch
+
+from poutyne.framework.callbacks._utils import atomic_lambda_save
+from poutyne.framework.callbacks.callbacks import Callback
+
+
+class GradientLoggerBase(Callback):
+    def __init__(self, keep_bias: bool = False, norm_type: float | list[float] = 2.0) -> None:
+        super().__init__()
+        self.keep_bias = keep_bias
+        self.norm_type = [norm_type] if isinstance(norm_type, (float, int)) else norm_type
+
+        self.stats_names = ['mean', 'var', 'min', 'abs_min', 'max', 'abs_max']
+        self.stats_names += [f'l{norm}' for norm in self.norm_type]
+
+        self.layers = []
+
+    def on_train_begin(self, logs: dict):
+        self.layers = [n for n, p in self.model.network.named_parameters() if self._keep_layer(p, n)]
+
+    def on_epoch_begin(self, epoch_number: int, logs: dict):
+        self.epoch = epoch_number
+
+    def on_train_batch_end(self, batch_number: int, logs: dict):
+        # Just in case we want to support second-order derivatives
+        with torch.no_grad():
+            layer_stats = {}
+            for name, param in self.model.network.named_parameters():
+                if self._keep_layer(param, name):
+                    grad = param.grad
+                    grad_abs_values = grad.abs()
+
+                    stats = {}
+                    stats['mean'] = grad_abs_values.mean().item()
+                    stats['var'] = grad_abs_values.var().item()
+                    stats['min'] = grad.min().item()
+                    stats['abs_min'] = grad_abs_values.min().item()
+                    stats['max'] = grad.max().item()
+                    stats['abs_max'] = grad_abs_values.max().item()
+                    for norm in self.norm_type:
+                        stats[f'l{norm}'] = grad_abs_values.norm(norm).item()
+
+                    layer_stats[name] = stats
+        self.log_stats(self.epoch, batch_number, logs, layer_stats)
+
+    def log_stats(
+        self, epoch_number: int, batch_number: int, logs: dict, layer_stats: dict[str, dict[str, float]]
+    ) -> None:
+        raise NotImplementedError
+
+    def _keep_layer(self, param: torch.nn.parameter.Parameter, name: str):
+        if self.keep_bias:
+            return param.requires_grad
+        return param.requires_grad and ("bias" not in name)
+
+
+class MemoryGradientLogger(GradientLoggerBase):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.history = []
+
+    def on_train_begin(self, logs: dict):
+        super().on_train_begin(logs)
+        self.history = {layer: [] for layer in self.layers}
+
+    def log_stats(
+        self, epoch_number: int, batch_number: int, logs: dict, layer_stats: dict[str, dict[str, float]]
+    ) -> None:
+        for layer, stats in layer_stats.items():
+            stats['epoch'] = epoch_number
+            stats['batch'] = batch_number
+            self.history[layer].append(stats)
+
+
+class TensorBoardGradientLogger(GradientLoggerBase):
+    def __init__(self, writer, initial_step: int = 0, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.writer = writer
+        self.current_step = initial_step
+
+    def log_stats(
+        self, epoch_number: int, batch_number: int, logs: dict, layer_stats: dict[str, dict[str, float]]
+    ) -> None:
+        self.current_step += 1
+        for layer, stats in layer_stats.items():
+            for name, value in stats.items():
+                self.writer.add_scalars(f'gradient_stats/{layer}', {name: value}, self.current_step)
+
+
+class AtomicCSVGradientLogger(GradientLoggerBase):
+    def __init__(
+        self,
+        filename,
+        *,
+        separator: str = ',',
+        append: bool = False,
+        temporary_filename: str | None = None,
+        **kwargs,
+    ) -> None:
+        super().__init__(**kwargs)
+        self.filename = filename
+        self.temporary_filename = temporary_filename
+        self.separator = separator
+        self.append = append
+        self.fieldnames = []
+
+    def _save_stats(self, fd: TextIO, filename: str, stats: dict):
+        olddata = None
+        if os.path.exists(filename):
+            with open(filename, encoding='utf-8') as oldfile:
+                olddata = list(csv.DictReader(oldfile, delimiter=self.separator))
+        csvwriter = csv.DictWriter(fd, fieldnames=self.fieldnames, delimiter=self.separator)
+        csvwriter.writeheader()
+        if olddata is not None:
+            csvwriter.writerows(olddata)
+        csvwriter.writerow(stats)
+
+    def _write_header(self, fd: TextIO):
+        csvwriter = csv.DictWriter(fd, fieldnames=self.fieldnames, delimiter=self.separator)
+        csvwriter.writeheader()
+
+    def on_train_begin(self, logs: dict):
+        super().on_train_begin(logs)
+        self.fieldnames = ['epoch', 'batch', *self.stats_names]
+
+        if not self.append:
+            for layer in self.layers:
+                filename = self.filename.format(layer)
+                atomic_lambda_save(filename, self._write_header, (), temporary_filename=self.temporary_filename)
+
+    def log_stats(
+        self, epoch_number: int, batch_number: int, logs: dict, layer_stats: dict[str, dict[str, float]]
+    ) -> None:
+        for layer, stats in layer_stats.items():
+            filename = self.filename.format(layer)
+            stats['epoch'] = epoch_number
+            stats['batch'] = batch_number
+            atomic_lambda_save(
+                filename, self._save_stats, (filename, stats), temporary_filename=self.temporary_filename
+            )
+
+
+class CSVGradientLogger(GradientLoggerBase):
+    def __init__(self, filename, *, separator: str = ',', append: bool = False, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.filename = filename
+        self.separator = separator
+        self.append = append
+
+    def on_train_begin(self, logs: dict):
+        super().on_train_begin(logs)
+        fieldnames = ['epoch', 'batch', *self.stats_names]
+        open_flag = 'a' if self.append else 'w'
+
+        @contextlib.contextmanager
+        def _open_csv(filename, mode):
+            with open(filename, mode, newline='', encoding='utf-8') as f:
+                yield f
+
+        self._exit_stack = contextlib.ExitStack()
+        self.csvfiles = {}
+        self.writers = {}
+        for layer in self.layers:
+            filename = self.filename.format(layer)
+            f = self._exit_stack.enter_context(_open_csv(filename, open_flag))
+            self.csvfiles[layer] = f
+            self.writers[layer] = csv.DictWriter(f, fieldnames=fieldnames, delimiter=self.separator)
+            if not self.append:
+                self.writers[layer].writeheader()
+                self.csvfiles[layer].flush()
+
+    def log_stats(
+        self, epoch_number: int, batch_number: int, logs: dict, layer_stats: dict[str, dict[str, float]]
+    ) -> None:
+        for layer, stats in layer_stats.items():
+            stats['epoch'] = epoch_number
+            stats['batch'] = batch_number
+            self.writers[layer].writerow(stats)
+            self.csvfiles[layer].flush()
+
+    def on_train_end(self, logs: dict):
+        super().on_train_end(logs)
+        self._exit_stack.close()

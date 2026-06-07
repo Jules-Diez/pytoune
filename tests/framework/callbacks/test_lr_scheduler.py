@@ -1,36 +1,50 @@
-import unittest
-from unittest import TestCase
+"""
+Copyright (c) 2022 Poutyne and all respective contributors.
 
+Each contributor holds copyright over their respective contributions. The project versioning (Git)
+records all such contribution source information.
+
+This file is part of Poutyne.
+
+Poutyne is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+Poutyne is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with Poutyne. If not, see
+<https://www.gnu.org/licenses/>.
+"""
+
+# Because of the way the callbacks are generated, we have to disable linting here.
+# pylint: disable=no-name-in-module
+import pytest
 import torch
 import torch.nn as nn
 
-from pytoune.framework import Model
-from pytoune.framework.callbacks import LambdaLR, StepLR, MultiStepLR, ExponentialLR, \
-    CosineAnnealingLR, ReduceLROnPlateau
+from poutyne import CosineAnnealingLR, ExponentialLR, LambdaLR, Model, MultiStepLR, ReduceLROnPlateau, StepLR
+from tests.framework.tools import some_data_generator
 
 
-def some_data_generator(batch_size):
-    while True:
-        x = torch.rand(batch_size, 1)
-        y = torch.rand(batch_size, 1)
-        yield x, y
-
-class LRSchedulersTest(TestCase):
+class LRSchedulersTest:
     batch_size = 20
     epochs = 10
     steps_per_epoch = 5
 
-    def setUp(self):
+    def setup_method(self):
         torch.manual_seed(42)
-        self.pytorch_module = nn.Linear(1, 1)
+        self.pytorch_network = nn.Linear(1, 1)
         self.loss_function = nn.MSELoss()
-        self.optimizer = torch.optim.SGD(self.pytorch_module.parameters(), lr=1e-3)
-        self.model = Model(self.pytorch_module, self.optimizer, self.loss_function)
+        self.optimizer = torch.optim.SGD(self.pytorch_network.parameters(), lr=1e-3)
+        self.model = Model(self.pytorch_network, self.optimizer, self.loss_function)
         self.train_gen = some_data_generator(20)
         self.valid_gen = some_data_generator(20)
 
     def test_lambda_lr_integration(self):
-        my_lambda = lambda epoch: 0.95 ** epoch
+        def my_lambda(epoch):
+            return 0.95**epoch
+
         lambda_lr = LambdaLR(lr_lambda=[my_lambda])
         self._fit_with_callback_integration(lambda_lr)
 
@@ -55,11 +69,14 @@ class LRSchedulersTest(TestCase):
         self._fit_with_callback_integration(reduce_lr)
 
     def _fit_with_callback_integration(self, callback):
-        self.model.fit_generator(self.train_gen, self.valid_gen,
-                                 epochs=LRSchedulersTest.epochs,
-                                 steps_per_epoch=LRSchedulersTest.steps_per_epoch,
-                                 callbacks=[callback])
+        self.model.fit_generator(
+            self.train_gen,
+            self.valid_gen,
+            epochs=LRSchedulersTest.epochs,
+            steps_per_epoch=LRSchedulersTest.steps_per_epoch,
+            callbacks=[callback],
+        )
 
-
-if __name__ == '__main__':
-    unittest.main()
+    def test_exception_is_thrown_on_optimizer_argument(self):
+        with pytest.raises(ValueError):
+            StepLR(self.optimizer, step_size=3)

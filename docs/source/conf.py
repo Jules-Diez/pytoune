@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #
 # Configuration file for the Sphinx documentation builder.
 #
@@ -12,24 +11,26 @@
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
+import datetime
 import os
 import sys
+
 sys.path.insert(0, os.path.abspath('../..'))
 
-from pytoune import __version__ as version
+from poutyne import __version__ as poutyne_version  # pylint: disable=wrong-import-position
 
+year = str(datetime.datetime.now().year)
 
 # -- Project information -----------------------------------------------------
 
-project = 'PyToune'
-copyright = '2018, Frédérik Paradis'
+project = 'Poutyne'
+copyright = '2018-' + year + ', Frédérik Paradis'  # pylint: disable=redefined-builtin
 author = 'Frédérik Paradis'
 
 # The short X.Y version
-version = version
+version = poutyne_version
 # The full version, including alpha/beta/rc tags
-release = version
-
+release = poutyne_version
 
 # -- General configuration ---------------------------------------------------
 
@@ -49,7 +50,8 @@ extensions = [
     'sphinx.ext.ifconfig',
     'sphinx.ext.viewcode',
     'sphinx.ext.githubpages',
-    'sphinx.ext.napoleon'
+    'sphinx.ext.napoleon',
+    'sphinx.ext.intersphinx',
 ]
 
 # Add any paths that contain templates here, relative to this directory.
@@ -69,7 +71,7 @@ master_doc = 'index'
 #
 # This is also used if you do content translation via gettext catalogs.
 # Usually you set "language" from the command line for these cases.
-language = None
+language = 'en'
 
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
@@ -78,7 +80,6 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 # The name of the Pygments (syntax highlighting) style to use.
 pygments_style = 'sphinx'
-
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -91,12 +92,16 @@ html_theme = 'sphinx_rtd_theme'
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
+html_theme_options = {
+    'logo_only': True,
+}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
+
+html_extra_path = ['CNAME', 'favicon.ico']
 
 # Custom sidebar templates, must be a dictionary that maps document names
 # to template names.
@@ -108,12 +113,12 @@ html_static_path = ['_static']
 #
 # html_sidebars = {}
 
+html_logo = '_static/logos/poutyne-light.png'
 
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = 'PyTounedoc'
-
+htmlhelp_basename = 'Poutynedoc'
 
 # -- Options for LaTeX output ------------------------------------------------
 
@@ -121,15 +126,12 @@ latex_elements = {
     # The paper size ('letterpaper' or 'a4paper').
     #
     # 'papersize': 'letterpaper',
-
     # The font size ('10pt', '11pt' or '12pt').
     #
     # 'pointsize': '10pt',
-
     # Additional stuff for the LaTeX preamble.
     #
     # 'preamble': '',
-
     # Latex figure (float) alignment
     #
     # 'figure_align': 'htbp',
@@ -139,20 +141,14 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, 'PyToune.tex', 'PyToune Documentation',
-     'Frédérik Paradis', 'manual'),
+    (master_doc, 'Poutyne.tex', 'Poutyne Documentation', 'Frédérik Paradis', 'manual'),
 ]
-
 
 # -- Options for manual page output ------------------------------------------
 
 # One entry per manual page. List of tuples
 # (source start file, name, description, authors, manual section).
-man_pages = [
-    (master_doc, 'pytoune', 'PyToune Documentation',
-     [author], 1)
-]
-
+man_pages = [(master_doc, 'poutyne', 'Poutyne Documentation', [author], 1)]
 
 # -- Options for Texinfo output ----------------------------------------------
 
@@ -160,13 +156,33 @@ man_pages = [
 # (source start file, target name, title, author,
 #  dir menu entry, description, category)
 texinfo_documents = [
-    (master_doc, 'PyToune', 'PyToune Documentation',
-     author, 'PyToune', 'One line description of project.',
-     'Miscellaneous'),
+    (
+        master_doc,
+        'Poutyne',
+        'Poutyne Documentation',
+        author,
+        'Poutyne',
+        'One line description of project.',
+        'Miscellaneous',
+    ),
 ]
 
+# -- Intersphinx mappings ----------------------------------------------------
+
+intersphinx_mapping = {
+    'PyTorch': ('https://pytorch.org/docs/stable/', None),
+    'python': ('https://docs.python.org/3', None),
+    'numpy': ('https://numpy.org/doc/stable/', None),
+    'matplotlib': ('https://matplotlib.org/stable/', None),
+    'pandas': ('https://pandas.pydata.org/pandas-docs/stable/', None),
+    'torchmetrics': ('https://torchmetrics.readthedocs.io/en/latest/', None),
+}
 
 # -- Extension configuration -------------------------------------------------
+
+autodoc_default_options = {
+    'member-order': 'bysource',
+}
 
 # -- Options for todo extension ----------------------------------------------
 

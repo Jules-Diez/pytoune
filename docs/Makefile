@@ -2,9 +2,9 @@
 #
 
 # You can set these variables from the command line.
-SPHINXOPTS    =
+SPHINXOPTS    = -W --keep-going
 SPHINXBUILD   = sphinx-build
-SPHINXPROJ    = PyToune
+SPHINXPROJ    = Poutyne
 SOURCEDIR     = source
 BUILDDIR      = _build
 

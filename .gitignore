@@ -71,8 +71,6 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
-# pyenv
-.python-version
 
 # celery beat schedule file
 celerybeat-schedule
@@ -82,6 +80,9 @@ celerybeat-schedule
 
 # dotenv
 .env
+
+# uv
+uv.lock
 
 # virtualenv
 .venv
@@ -110,3 +111,14 @@ ENV/
 
 # VScode projects
 .vscode/
+
+# VScode XDG
+XDG_*
+
+# LaTeX
+*.aux
+*.out
+*.synctex.gz
+*.bbl
+*.blg
+

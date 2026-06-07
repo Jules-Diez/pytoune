@@ -1,0 +1,29 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+  schedule:
+    # Run the tests at 00:00 each week on Sunday
+    - cron: "0 0 * * 0"
+  workflow_call:
+
+jobs:
+  cicd-pipeline:
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        os: [ubuntu-latest]
+        include:
+          - python-version: "3.12"
+            os: macos-latest
+          - python-version: "3.12"
+            os: windows-latest
+    uses: ./.github/workflows/reusable-main.yml
+    secrets:
+      codecov_token: ${{ secrets.CODECOV_TOKEN }}
+    with:
+      os: ${{ matrix.os }}
+      python-version: ${{ matrix.python-version }}

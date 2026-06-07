@@ -1,0 +1,263 @@
+"""
+Copyright (c) 2022 Poutyne and all respective contributors.
+
+Each contributor holds copyright over their respective contributions. The project versioning (Git)
+records all such contribution source information.
+
+This file is part of Poutyne.
+
+Poutyne is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+Poutyne is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with Poutyne. If not, see
+<https://www.gnu.org/licenses/>.
+"""
+
+# pylint: disable=unused-argument
+import os
+
+import pytest
+import torch
+from torch import nn
+
+from poutyne import Model
+from tests.framework.model.base import ModelFittingTestCase
+from tests.framework.tools import (
+    SomeConstantMetric,
+    repeat_batch_metric,
+    repeat_batch_metric_value,
+    some_batch_metric_1,
+    some_batch_metric_2,
+    some_constant_metric_value,
+    some_data_tensor_generator,
+    some_metric_1_value,
+    some_metric_2_value,
+)
+
+TEST_MULTI_GPUS = int(os.environ.get('MULTI_GPUS', '0'))
+
+
+@pytest.mark.skipif(torch.cuda.device_count() < 2, reason="Need at least two gpus")
+@pytest.mark.skipif(TEST_MULTI_GPUS != 1, reason="Multi-gpus test not asked for.")
+class ModelMultiGPUTest(ModelFittingTestCase):
+    # pylint: disable=too-many-public-methods
+
+    def setup_method(self):
+        super().setup_method()
+        torch.manual_seed(42)
+        self.pytorch_network = nn.Linear(1, 1)
+        self.loss_function = nn.MSELoss()
+        self.optimizer = torch.optim.Adam(self.pytorch_network.parameters(), lr=1e-3)
+        self.batch_metrics = [
+            some_batch_metric_1,
+            ('custom_name', some_batch_metric_2),
+            repeat_batch_metric,
+            repeat_batch_metric,
+        ]
+        self.batch_metrics_names = [
+            'some_batch_metric_1',
+            'custom_name',
+            'repeat_batch_metric1',
+            'repeat_batch_metric2',
+        ]
+        self.batch_metrics_values = [
+            some_metric_1_value,
+            some_metric_2_value,
+            repeat_batch_metric_value,
+            repeat_batch_metric_value,
+        ]
+        self.epoch_metrics = [SomeConstantMetric()]
+        self.epoch_metrics_names = ['some_constant_metric']
+        self.epoch_metrics_values = [some_constant_metric_value]
+
+        self.model = Model(
+            self.pytorch_network,
+            self.optimizer,
+            self.loss_function,
+            batch_metrics=self.batch_metrics,
+            epoch_metrics=self.epoch_metrics,
+        )
+
+        self.default_main_device = ModelMultiGPUTest.cuda_device
+
+    def _test_multiple_gpu_mode(self, devices):
+        expected = torch.cuda.device_count() if devices == "all" else len(devices)
+        assert len([self.model.device, *self.model.other_device]) == expected
+
+    def _test_single_gpu_mode(self):
+        assert self.model.other_device is None
+        assert len([self.model.device]) == 1
+
+    def test_back_and_forth_gpu_cpu_multi_gpus(self):
+        devices = "all"
+        train_generator = some_data_tensor_generator(ModelMultiGPUTest.batch_size)
+        valid_generator = some_data_tensor_generator(ModelMultiGPUTest.batch_size)
+
+        with torch.cuda.device(self.default_main_device):
+            self.model.to(devices)
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cuda:' + str(self.default_main_device)))
+            self._test_multiple_gpu_mode(devices=devices)
+
+            self.model.cpu()
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cpu'))
+            self._test_single_gpu_mode()
+
+            self.model.to(devices)
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cuda:' + str(ModelMultiGPUTest.cuda_device)))
+            self._test_multiple_gpu_mode(devices=devices)
+
+            self.model.to(torch.device('cpu'))
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cpu'))
+            self._test_single_gpu_mode()
+
+    def test_back_and_forth_cuda_cpu_to_multi_gpus(self):
+        devices = "all"
+        train_generator = some_data_tensor_generator(ModelMultiGPUTest.batch_size)
+        valid_generator = some_data_tensor_generator(ModelMultiGPUTest.batch_size)
+
+        self.model.to(devices)
+        self.model.fit_generator(
+            train_generator,
+            valid_generator,
+            epochs=ModelMultiGPUTest.epochs,
+            steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+            validation_steps=ModelMultiGPUTest.steps_per_epoch,
+        )
+
+        with torch.cuda.device(self.default_main_device):
+            self.model.cuda()
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cuda:' + str(self.default_main_device)))
+            self._test_single_gpu_mode()
+
+            self.model.cpu()
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cpu'))
+            self._test_single_gpu_mode()
+
+            self.model.to(devices)
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cuda:' + str(ModelMultiGPUTest.cuda_device)))
+            self._test_multiple_gpu_mode(devices=devices)
+
+            self.model.cuda()
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cuda:' + str(self.default_main_device)))
+            self._test_single_gpu_mode()
+
+            self.model.to(torch.device('cpu'))
+            self.model.fit_generator(
+                train_generator,
+                valid_generator,
+                epochs=ModelMultiGPUTest.epochs,
+                steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+                validation_steps=ModelMultiGPUTest.steps_per_epoch,
+            )
+            self._test_device(torch.device('cpu'))
+            self._test_single_gpu_mode()
+
+    def test_devices_settings(self):
+        train_generator = some_data_tensor_generator(ModelMultiGPUTest.batch_size)
+        valid_generator = some_data_tensor_generator(ModelMultiGPUTest.batch_size)
+
+        devices = "all"
+        self.model.to(devices)
+        self.model.fit_generator(
+            train_generator,
+            valid_generator,
+            epochs=ModelMultiGPUTest.epochs,
+            steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+            validation_steps=ModelMultiGPUTest.steps_per_epoch,
+        )
+        self._test_multiple_gpu_mode(devices=devices)
+
+        devices = ["cuda:0", "cuda:1"]
+        self.model.to(devices)
+        self.model.fit_generator(
+            train_generator,
+            valid_generator,
+            epochs=ModelMultiGPUTest.epochs,
+            steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+            validation_steps=ModelMultiGPUTest.steps_per_epoch,
+        )
+        self._test_multiple_gpu_mode(devices=devices)
+
+        devices = [torch.device("cuda:0"), torch.device("cuda:1")]
+        self.model.to(devices)
+        self.model.fit_generator(
+            train_generator,
+            valid_generator,
+            epochs=ModelMultiGPUTest.epochs,
+            steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+            validation_steps=ModelMultiGPUTest.steps_per_epoch,
+        )
+        self._test_multiple_gpu_mode(devices=devices)
+
+        devices = ["cuda:1"]
+        self.model.to(devices)
+        assert self.model.other_device is None
+        self.model.fit_generator(
+            train_generator,
+            valid_generator,
+            epochs=ModelMultiGPUTest.epochs,
+            steps_per_epoch=ModelMultiGPUTest.steps_per_epoch,
+            validation_steps=ModelMultiGPUTest.steps_per_epoch,
+        )
+        self._test_device(torch.device('cuda:1'))
+        self._test_single_gpu_mode()

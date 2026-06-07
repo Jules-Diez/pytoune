@@ -1,0 +1,94 @@
+"""
+Copyright (c) 2022 Poutyne and all respective contributors.
+
+Each contributor holds copyright over their respective contributions. The project versioning (Git)
+records all such contribution source information.
+
+This file is part of Poutyne.
+
+Poutyne is free software: you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
+License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+Poutyne is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty
+of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with Poutyne. If not, see
+<https://www.gnu.org/licenses/>.
+"""
+
+import os
+from tempfile import TemporaryDirectory
+
+import pytest
+
+try:
+    import pandas  # pylint: disable=unused-import  # noqa: F401
+
+    pandas_available = True
+except ImportError:
+    pandas_available = False
+import torch.nn.functional as F
+from torch import nn
+
+from poutyne import Experiment, FBeta, acc
+
+
+@pytest.mark.skipif(not pandas_available, reason="pandas is not available")
+class ExperimentTasksTest:
+    def setup_method(self):
+        self.temp_dir_obj = TemporaryDirectory()
+        self.test_checkpoints_path = os.path.join(self.temp_dir_obj.name, 'expt')
+
+    def teardown_method(self):
+        self.temp_dir_obj.cleanup()
+
+    def test_task_classif(self):
+        expt = Experiment(
+            self.test_checkpoints_path,
+            nn.Linear(1, 10),
+            optimizer='sgd',
+            task='classif',
+        )
+        self._test_task_classif(expt)
+
+        expt = Experiment(
+            self.test_checkpoints_path,
+            nn.Linear(1, 10),
+            optimizer='sgd',
+            task='classification',
+        )
+        self._test_task_classif(expt)
+
+    def _test_task_classif(self, expt):
+        assert expt.monitor_metric == 'val_acc'
+        assert expt.monitor_mode == 'max'
+        assert expt.model.loss_function.func == F.cross_entropy
+        assert len(expt.model.batch_metrics) == 1
+        assert expt.model.batch_metrics[0].func == acc
+        assert len(expt.model.epoch_metrics) == 1
+        assert isinstance(expt.model.epoch_metrics[0], FBeta)
+
+    def test_task_regr(self):
+        expt = Experiment(
+            self.test_checkpoints_path,
+            nn.Linear(1, 10),
+            optimizer='sgd',
+            task='regr',
+        )
+        self._test_task_regr(expt)
+
+        expt = Experiment(
+            self.test_checkpoints_path,
+            nn.Linear(1, 10),
+            optimizer='sgd',
+            task='regression',
+        )
+        self._test_task_regr(expt)
+
+    def _test_task_regr(self, expt):
+        assert expt.monitor_metric == 'val_loss'
+        assert expt.monitor_mode == 'min'
+        assert expt.model.loss_function.func == F.mse_loss
+        assert len(expt.model.batch_metrics) == 0
+        assert len(expt.model.epoch_metrics) == 0

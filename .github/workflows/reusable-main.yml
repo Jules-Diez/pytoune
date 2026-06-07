@@ -1,0 +1,91 @@
+name: Reusable CI/CD
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        required: true
+        type: string
+      os:
+        required: true
+        type: string
+    secrets:
+      codecov_token:
+        required: true
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  formatting:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install dependencies
+        run: uv sync --group lint
+      - name: Formatting
+        run: uv run ruff format --check --diff .
+
+  linting:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install dependencies
+        run: uv sync --group lint
+      - name: Lint
+        run: uv run ruff check .
+
+  docs:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install dependencies
+        run: uv sync --group docs
+      - name: Building doc
+        run: cd docs && ./rebuild_html_doc.sh
+
+  tests:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install dependencies
+        run: uv sync --group test
+      - name: Test with pytest
+        run: uv run pytest
+      - name: Upload Codecov
+        uses: codecov/codecov-action@v6
+        with:
+          files: ./coverage.xml
+          token: ${{ secrets.codecov_token }}
+
+  tests_without_deps:
+    runs-on: ${{ inputs.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v8.2.0
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv pip install pytest pytest-cov -e .
+      - name: Test with pytest
+        run: uv run --no-sync pytest
